@@ -708,16 +708,25 @@ def cleave(*args, **kwargs):
     return set(p for i, p in icleave(*args, **kwargs))
 
 
-def icleave(sequence, rule, missed_cleavages=0, min_length=None, max_length=None, semi=False, exception=None, regex=False):
+def icleave(sequence, rule, missed_cleavages=0, min_length=None, max_length=None, semi=0, exception=None, regex=False, enzyme_terminal="C"):
     """Like :py:func:`cleave`, but the result is an iterator and includes peptide indices.
     Refer to :py:func:`cleave` for explanation of parameters.
 
     Returns
     -------
     out : iterator
-        An iterator over (index, sequence) pairs.
+        An iterator over (index, sequence, missed_cleavages) pairs.
 
     """
+    
+    if semi == 2:
+        for start in range(0, len(sequence)-min_length+1):
+            for end in range(start+min_length, len(sequence)+1):
+                if end - start > max_length:
+                    break
+                yield (start, sequence[start:end], -1)
+        return
+    
     if not regex:
         if rule in expasy_rules:
             rule = expasy_rules[rule]
@@ -739,26 +748,60 @@ def icleave(sequence, rule, missed_cleavages=0, min_length=None, max_length=None
     cl = 1
     if exception is not None:
         exceptions = {x.end() for x in re.finditer(exception, sequence)}
-    for end in it.chain([x.end() for x in re.finditer(rule, sequence)], [None]):
-        if exception is not None and end in exceptions:
-            continue
-        cleavage_sites.append(end)
-        if cl < ml:
-            cl += 1
-        for j in trange[:cl - 1]:
-            seq = sequence[cleavage_sites[j]:cleavage_sites[-1]]
-            lenseq = len(seq)
-            if end is not None:
-                start = end - lenseq
-            else:
-                start = len(sequence) - lenseq
-            if seq and min_length <= lenseq <= max_length:
-                yield (start, seq)
-                if semi:
-                    for k in range(min_length, min(lenseq, max_length)):
-                        yield (start, seq[:k])
-                    for k in range(max(1, lenseq - max_length), lenseq - min_length + 1):
-                        yield (start + k, seq[k:])
+    # For every specific cleavable site
+    if enzyme_terminal == "C":
+        for end in it.chain([x.end() for x in re.finditer(rule, sequence)], [None]):
+            if exception is not None and end in exceptions:
+                continue
+            cleavage_sites.append(end)
+            if cl < ml:
+                cl += 1
+            # Yield the sequence with sites history; considering missing sites
+            for j in trange[:cl - 1]:
+                seq = sequence[cleavage_sites[j]:cleavage_sites[-1]]
+                lenseq = len(seq)
+                if end is not None:
+                    start = end - lenseq
+                else:
+                    # Stop if the sequence ends with a cleavage site
+                    if cleavage_sites[-2] == len(sequence):
+                        continue
+                    start = len(sequence) - lenseq
+                if seq and min_length <= lenseq <= max_length:
+                    yield (start, seq, cl-j-2)
+                    if semi:
+                        for k in range(min_length, min(lenseq, max_length)):
+                            yield (start, seq[:k], cl-j-2)
+                        for k in range(max(1, lenseq - max_length), lenseq - min_length + 1):
+                            yield (start + k, seq[k:], cl-j-2)
+
+    elif enzyme_terminal == "N":
+        # Reverse the sequence to make the deal with cleavage site simpler
+        sequence = sequence[::-1]
+        for end in it.chain([x.end() for x in re.finditer(rule, sequence)], [None]):
+            if exception is not None and end in exceptions:
+                continue
+            cleavage_sites.append(end)
+            if cl < ml:
+                cl += 1
+                
+            if end is None:
+                # Stop if the sequence ends with a cleavage site
+                if cleavage_sites[-2] == len(sequence):
+                    continue
+                end = len(sequence)
+            # Yield the sequence with sites history; considering missing sites
+            for j in trange[:cl - 1]:
+                seq = sequence[cleavage_sites[j]:cleavage_sites[-1]]
+                lenseq = len(seq)
+                if seq and min_length <= lenseq <= max_length:
+                    # Reverse the results again
+                    yield (len(sequence)-end, seq[::-1], cl-j-2)
+                    if semi:
+                        for k in range(min_length, min(lenseq, max_length)):
+                            yield (len(sequence)-end+k, seq[:k][::-1], cl-j-2)
+                        for k in range(max(1, lenseq - max_length), lenseq - min_length + 1):
+                            yield (len(sequence)-end, seq[k:][::-1], cl-j-2)
 
 
 def xcleave(*args, **kwargs):
