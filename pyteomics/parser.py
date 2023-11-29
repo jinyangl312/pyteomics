@@ -804,6 +804,7 @@ def icleave(sequence, rule, missed_cleavages=0, min_length=None, max_length=None
                             yield (len(sequence)-end, seq[k:][::-1], cl-j-2)
 
 
+@memoize()
 def icleave_trypsin_P_common(sequence, rule='[KR]', missed_cleavages=3, min_length=6, max_length=60, semi=0, exception=None, regex=False):
     """Like :py:func:`cleave`, but the result is an iterator and includes peptide indices.
     Refer to :py:func:`cleave` for explanation of parameters.
@@ -811,7 +812,7 @@ def icleave_trypsin_P_common(sequence, rule='[KR]', missed_cleavages=3, min_leng
     Returns
     -------
     out : iterator
-        An iterator over (index, sequence, missed_cleavages) pairs.
+        An iterator over (index, sequence, is_N_term, is_C_term, missed_cleavages) pairs.
 
     """
         
@@ -846,7 +847,7 @@ def icleave_trypsin_P_common(sequence, rule='[KR]', missed_cleavages=3, min_leng
                     continue
                 start = len(sequence) - lenseq
             if seq and min_length <= lenseq <= max_length:
-                yield (start, seq, cl-j-2)
+                yield (start, seq, cleavage_sites[j] <= 1, cleavage_sites[-1] == len(sequence), cl-j-2)
 
                 
 def xcleave(*args, **kwargs):
