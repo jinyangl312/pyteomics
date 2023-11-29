@@ -804,6 +804,51 @@ def icleave(sequence, rule, missed_cleavages=0, min_length=None, max_length=None
                             yield (len(sequence)-end, seq[k:][::-1], cl-j-2)
 
 
+def icleave_trypsin_P_common(sequence, rule='[KR]', missed_cleavages=3, min_length=6, max_length=60, semi=0, exception=None, regex=False):
+    """Like :py:func:`cleave`, but the result is an iterator and includes peptide indices.
+    Refer to :py:func:`cleave` for explanation of parameters.
+
+    Returns
+    -------
+    out : iterator
+        An iterator over (index, sequence, missed_cleavages) pairs.
+
+    """
+        
+    exception = expasy_rules.get(exception, exception)
+    ml = missed_cleavages + 2
+    trange = range(ml)
+    cleavage_sites = deque([0], maxlen=ml)
+    if min_length is None:
+        min_length = 1
+    if max_length is None:
+        max_length = len(sequence)
+    cl = 1
+    if exception is not None:
+        exceptions = {x.end() for x in re.finditer(exception, sequence)}
+
+    # For every specific cleavable site
+    for end in it.chain([x.end() for x in re.finditer(rule, sequence)], [None]):
+        if exception is not None and end in exceptions:
+            continue
+        cleavage_sites.append(end)
+        if cl < ml:
+            cl += 1
+        # Yield the sequence with sites history; considering missing sites
+        for j in trange[:cl - 1]:
+            seq = sequence[cleavage_sites[j]:cleavage_sites[-1]]
+            lenseq = len(seq)
+            if end is not None:
+                start = end - lenseq
+            else:
+                # Stop if the sequence ends with a cleavage site
+                if cleavage_sites[-2] == len(sequence):
+                    continue
+                start = len(sequence) - lenseq
+            if seq and min_length <= lenseq <= max_length:
+                yield (start, seq, cl-j-2)
+
+                
 def xcleave(*args, **kwargs):
     """Like :py:func:`icleave`, but returns a list.
 
